@@ -1,11 +1,11 @@
-# reproducible_water_wqi_pipeline
 # Reproducible Water Quality Index (WQI) Workflow (R)
 
 This repository provides a fully reproducible R workflow to:
 1) normalize measured water-quality parameters into dimensionless indices (I_x) relative to regulatory standards,  
 2) compute a Water Quality Index (WQI) on a 0–100 scale,  
-3) perform K-means clustering and PCA to explore patterns in water quality, and  
-4) produce spatial WQI maps using ordinary kriging for each monitoring round.
+3) generate manuscript-style summary figures (boxplot of WQI by round; exceedance frequency by parameter),  
+4) perform K-means clustering and PCA to explore patterns in water quality, and  
+5) produce spatial WQI maps using ordinary kriging for each monitoring round.
 
 The workflow is implemented as a **single R script** designed to be executed end-to-end and to generate all tables/figures in a standardized output folder.
 
@@ -24,12 +24,11 @@ The workflow is implemented as a **single R script** designed to be executed end
 ## 2. Requirements
 
 ### 2.1 R Version
-- Recommended: **R ≥ 4.2.0**  
-  (The script may work on older versions, but this is the recommended baseline for consistent package behavior.)
+- Recommended: **R ≥ 4.2.0**
 
 ### 2.2 R Packages
 The script will automatically install missing packages from CRAN, then load them:
-- `optparse`, `readxl`, `writexl`, `dplyr`, `janitor`, `tidyr`, `stringr`
+- `optparse`, `readxl`, `writexl`, `dplyr`, `janitor`, `tidyr`, `stringr`, `forcats`, `scales`
 - `ggplot2`, `viridis`
 - `sf`, `sp`, `gstat`
 - `purrr`
@@ -67,14 +66,14 @@ Required columns (case-insensitive; script cleans names via `janitor::clean_name
   - `nitrite`, `ammonium`, `chloride`, `fluoride`, `arsenic`, `lead`,
   - `manganese`, `iron`, `e_coli`, `ph`, `do`, `bod`, `cod`, `tss`, `coliform`
 
-**Units** must match the standards used in the script (see Section 5).
+**Units** must match the standards used in the script.
 
 ### 4.2 `data/Water_coordinate_points.xlsx` (station coordinates)
 Required columns:
 - `station` (station ID)
 - `lon` and `lat`
 
-> The script standardizes station IDs with `toupper(trimws())` before joining.
+Station IDs are standardized with `toupper(trimws())` prior to joining.
 
 ### 4.3 `data/data_WQI.xlsx` (WQI points for kriging)
 Required columns:
@@ -84,7 +83,7 @@ Required columns:
 - `lon`, `lat`
 
 **Coordinate assumption**: by default, the script assumes `lon/lat` are geographic coordinates in **EPSG:4326 (WGS84)** and then transforms them to the projected CRS used for kriging (default EPSG:9208).  
-If your `lon/lat` are already projected (meters) in EPSG:9208, edit the script variable `crs_wqi_input` accordingly.
+If your `lon/lat` are already projected (meters) in EPSG:9208, edit `crs_wqi_input` inside the script.
 
 ### 4.4 `data/border-nghean2.shp` (study area boundary)
 A polygon shapefile of the study region. All shapefile sidecar files (`.shx`, `.dbf`, `.prj`, etc.) must be present.
@@ -131,22 +130,23 @@ WQI = \frac{1}{1+E}
 WQI_{100} = 100 \cdot WQI
 \]
 
-> **Important**: This formulation is a transparent, reproducible exceedance-based WQI.  
-> If your manuscript follows a different published WQI definition (e.g., NSF-WQI, weighted arithmetic WQI, CCME-WQI, etc.), you should update the formula section and/or script accordingly.
+### 5.3 Summary Figures (Manuscript Style)
+- **Fig. 2 (Boxplot)**: distribution of `WQI100` by monitoring round (monochrome style).  
+- **Fig. 4 (Exceedance frequency)**: percentage of samples exceeding standards (`I_i > 1`) for each parameter.
 
-### 5.3 K-means Clustering
+### 5.4 K-means Clustering
 Clustering is performed on `WQI100` and all indices `I_*`:
 - Standardization: z-score scaling
 - Elbow method: within-cluster sum of squares for k=1..10
 - Final k: user-defined via `--k_opt` (default 3)
 
-### 5.4 PCA
+### 5.5 PCA
 PCA is computed on index variables `I_*` (excluding `I_max`) with scaling.
 - Outputs include bar charts of loadings for PC1 and PC2, and a scores plot colored by WQI.
 
-### 5.5 Spatial Interpolation (Ordinary Kriging)
+### 5.6 Spatial Interpolation (Ordinary Kriging)
 For each sampling round:
-- empirical variogram is computed and fitted (default initial model: spherical),
+- an empirical variogram is computed and fitted (default initial model: spherical),
 - ordinary kriging predicts WQI over a grid masked to the study boundary,
 - both continuous and classified maps are produced.
 
@@ -184,10 +184,16 @@ Adds WQI (0–1) and WQI100 (0–100)
 data_water_wqi_kmeans.xlsx
 Adds cluster assignment
 
-data_wqi_with_coordinates.xlsx
-WQI100 joined with station coordinates
+dat_wqi_with_coordinates.xlsx
+WQI100 joined with station coordinates (used for Fig.2 and Fig.4)
 
 7.2 Figures (outputs/figures/)
+
+Fig2_boxplot_WQI100_monochrome.tiff
+Boxplot of WQI100 by monitoring round (monochrome)
+
+Fig4_exceedance_frequency_monochrome.tiff
+Exceedance frequency (%) by parameter (I_i > 1) (monochrome)
 
 elbow_kmeans_k<k>.tiff
 Elbow curve for choosing k
@@ -211,3 +217,32 @@ Classified WQI surfaces by round
 
 sessionInfo.txt
 R version + package versions
+
+8. Citation / Method Reference (Edit as Needed)
+
+If you use this exceedance-based WQI definition in your manuscript, describe it explicitly (Section 5.2) and cite your chosen reference(s).
+
+Common WQI references (choose the one that matches your manuscript’s definition):
+
+NSF-WQI: Brown et al. (1970) and related NSF documentation.
+
+Weighted Arithmetic WQI: e.g., Horton (1965), Brown et al. (1972) variants.
+
+CCME-WQI: Canadian Council of Ministers of the Environment (CCME, 2001).
+
+9. Notes & Troubleshooting
+
+Coordinate CRS
+If your lon/lat in data_WQI.xlsx are already in projected meters (EPSG:9208), set crs_wqi_input <- 9208 inside the script.
+
+Round labels
+The script can label 4 rounds as: Mar/Jun/Sep/Dec 2025 (--use_round_labels TRUE). If your rounds differ, set --use_round_labels FALSE.
+
+Station name mismatch
+Ensure station IDs match between the raw data and coordinate file. Missing stations are printed to the console.
+
+Missing values (NA)
+PCA drops rows with NA in index variables. If many rows are removed, consider addressing missingness upstream.
+
+Kriging stability
+Rounds with too few points (<3) are skipped. Variogram fitting may be unstable with limited points.
